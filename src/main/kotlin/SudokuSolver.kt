@@ -7,25 +7,20 @@ const val X = 0 // empty field
 val values = (1..9).toSet()
 
 
-data class SudokuBox(val rows: IntRange, val columns: IntRange)
+data class SudokuBox(val rows: List<Int>, val columns: List<Int>)
 
 operator fun SudokuBox.contains(field: SudokuField) = field.row in rows && field.column in columns
-val boxes = setOf(
-    SudokuBox(rows = (0..2), columns = (0..2)),
-    SudokuBox(rows = (3..5), columns = (0..2)),
-    SudokuBox(rows = (6..8), columns = (0..2)),
-    SudokuBox(rows = (0..2), columns = (3..5)),
-    SudokuBox(rows = (3..5), columns = (3..5)),
-    SudokuBox(rows = (6..8), columns = (3..5)),
-    SudokuBox(rows = (0..2), columns = (6..8)),
-    SudokuBox(rows = (3..5), columns = (6..8)),
-    SudokuBox(rows = (6..8), columns = (6..8)),
-)
+val boxes = (0..8).chunked(3).flatMap { rows ->
+    (0..8).chunked(3).map { columns ->
+        SudokuBox(rows, columns)
+    }
+}
 
 
 typealias SudokuGrid = List<MutableList<Int>>
 
-operator fun SudokuGrid.get(field: SudokuField) = get(field.row)[field.column]
+operator fun SudokuGrid.set(field: SudokuField, value: Int) = this[field.row].set(field.column, value)
+operator fun SudokuGrid.get(field: SudokuField) = this[field.row][field.column]
 fun SudokuGrid.getCandidates(field: SudokuField) = getCandidatesFromRow(field)
     .intersect(getCandidatesFromColumn(field))
     .intersect(getCandidatesFromBox(field))
@@ -48,36 +43,23 @@ fun SudokuGrid.getCandidatesFromBox(field: SudokuField) = values.minus(field.get
 fun SudokuGrid.clone() = toList().map { it.toMutableList() }
 
 fun solve(grid: SudokuGrid): SudokuGrid? {
-    val possibleTurns = mutableMapOf<SudokuField, Set<Int>>()
-
-    for (row in 0..8) {
-        for (column in 0..8) {
-            val field = SudokuField(row, column)
-            if (grid[field] == X) {
-                possibleTurns[field] = grid.getCandidates(field)
-            }
+    val possibleMoves = grid.flatMapIndexed { rowIndex, row ->
+        row.mapIndexedNotNull { columnIndex, value ->
+            SudokuField(
+                rowIndex,
+                columnIndex
+            ).takeIf { value == X }
         }
-    }
+    }.associateWith { grid.getCandidates(it) }
 
-    if (possibleTurns.any { it.value.isEmpty() }) {
-        return null
-    }
-
-    if (possibleTurns.isEmpty()) {
+    if (possibleMoves.isEmpty()) {
         return grid
     }
 
-    val (field, values) = possibleTurns.minByOrNull { it.value.size }!!
-    for (value in values) {
-        val clone = grid.clone()
-        clone[field.row][field.column] = value
-        val result = solve(clone)
-        if (result != null) {
-            return result
-        }
+    val (field, values) = possibleMoves.minByOrNull { it.value.size }!!
+    return values.firstNotNullOfOrNull {
+        solve(grid.clone().apply { this[field] = it })
     }
-
-    return null
 }
 
 fun main() {
@@ -93,5 +75,8 @@ fun main() {
         mutableListOf(7, 6, 5, X, 9, X, X, 2, X)
     )
 
-    println(solve(grid))
+    println(
+        solve(grid)?.joinToString(separator = "\n") { it.joinToString(separator = "   ") }
+            ?: "Unsolvable sudoku"
+    )
 }
